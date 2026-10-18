@@ -30,7 +30,14 @@ jobs:
           sed -i 's/android:label="hanuman_chalisa"/android:label="Hanuman Chalisa"/' android/app/src/main/AndroidManifest.xml
           # Use the older, widely compatible graphics engine (avoids stuck screens on some phones)
           sed -i '0,/<activity/s//<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" \/>\n        <activity/' android/app/src/main/AndroidManifest.xml
-          cat android/app/src/main/AndroidManifest.xml
+          # Let the app find the phone's text-to-speech engine (Android 11+)
+          M=android/app/src/main/AndroidManifest.xml
+          if grep -q '<queries>' $M; then
+            sed -i 's#<queries>#<queries>\n        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>#' $M
+          else
+            sed -i 's#</manifest>#    <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>\n</manifest>#' $M
+          fi
+          cat $M
           flutter --version
 
       - name: Get packages
