@@ -10,9 +10,45 @@ const Color saffron = Color(0xFFE65100);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
+
+  // Show any unexpected error on screen instead of a blank page.
+  ErrorWidget.builder = (details) => _ErrorView(message: details.exceptionAsString());
+
+  SharedPreferences? prefs;
+  try {
+    prefs = await SharedPreferences.getInstance()
+        .timeout(const Duration(seconds: 3));
+  } catch (_) {
+    prefs = null; // app still works, progress just isn't saved
+  }
   settings = AppSettings(prefs);
+
   runApp(const ChalisaApp());
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ColoredBox(
+        color: const Color(0xFFFFF3E0),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: Text(
+              'Something went wrong. Please send this message to the developer:\n\n$message',
+              style: const TextStyle(color: Color(0xFF5D4037), fontSize: 15),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -20,18 +56,18 @@ Future<void> main() async {
 // ---------------------------------------------------------------------------
 
 class AppSettings extends ChangeNotifier {
-  AppSettings(SharedPreferences prefs)
+  AppSettings(SharedPreferences? prefs)
       : _prefs = prefs,
-        fontScale = prefs.getDouble('fontScale') ?? 1.0,
-        showRoman = prefs.getBool('showRoman') ?? false,
-        showAllMeanings = prefs.getBool('showAllMeanings') ?? false,
-        themeIndex = prefs.getInt('themeIndex') ?? 0,
-        pathCount = prefs.getInt('pathCount') ?? 0,
-        malaTarget = prefs.getInt('malaTarget') ?? 108,
-        counter = prefs.getInt('counter') ?? 0,
-        malaRounds = prefs.getInt('malaRounds') ?? 0;
+        fontScale = prefs?.getDouble('fontScale') ?? 1.0,
+        showRoman = prefs?.getBool('showRoman') ?? false,
+        showAllMeanings = prefs?.getBool('showAllMeanings') ?? false,
+        themeIndex = prefs?.getInt('themeIndex') ?? 0,
+        pathCount = prefs?.getInt('pathCount') ?? 0,
+        malaTarget = prefs?.getInt('malaTarget') ?? 108,
+        counter = prefs?.getInt('counter') ?? 0,
+        malaRounds = prefs?.getInt('malaRounds') ?? 0;
 
-  final SharedPreferences _prefs;
+  final SharedPreferences? _prefs;
 
   double fontScale;
   bool showRoman;
@@ -50,7 +86,7 @@ class AppSettings extends ChangeNotifier {
 
   void setThemeIndex(int value) {
     themeIndex = value;
-    _prefs.setInt('themeIndex', value);
+    _prefs?.setInt('themeIndex', value);
     notifyListeners();
   }
 
@@ -59,33 +95,33 @@ class AppSettings extends ChangeNotifier {
     if (next < 0.8) next = 0.8;
     if (next > 2.0) next = 2.0;
     fontScale = next;
-    _prefs.setDouble('fontScale', fontScale);
+    _prefs?.setDouble('fontScale', fontScale);
     notifyListeners();
   }
 
   void toggleRoman() {
     showRoman = !showRoman;
-    _prefs.setBool('showRoman', showRoman);
+    _prefs?.setBool('showRoman', showRoman);
     notifyListeners();
   }
 
   void toggleAllMeanings() {
     showAllMeanings = !showAllMeanings;
-    _prefs.setBool('showAllMeanings', showAllMeanings);
+    _prefs?.setBool('showAllMeanings', showAllMeanings);
     notifyListeners();
   }
 
   void completePath() {
     pathCount++;
-    _prefs.setInt('pathCount', pathCount);
+    _prefs?.setInt('pathCount', pathCount);
     notifyListeners();
   }
 
   void setMalaTarget(int value) {
     malaTarget = value;
     if (counter >= malaTarget) counter = 0;
-    _prefs.setInt('malaTarget', malaTarget);
-    _prefs.setInt('counter', counter);
+    _prefs?.setInt('malaTarget', malaTarget);
+    _prefs?.setInt('counter', counter);
     notifyListeners();
   }
 
@@ -97,9 +133,9 @@ class AppSettings extends ChangeNotifier {
       counter = 0;
       malaRounds++;
       roundDone = true;
-      _prefs.setInt('malaRounds', malaRounds);
+      _prefs?.setInt('malaRounds', malaRounds);
     }
-    _prefs.setInt('counter', counter);
+    _prefs?.setInt('counter', counter);
     notifyListeners();
     return roundDone;
   }
@@ -107,8 +143,8 @@ class AppSettings extends ChangeNotifier {
   void resetCounter() {
     counter = 0;
     malaRounds = 0;
-    _prefs.setInt('counter', 0);
-    _prefs.setInt('malaRounds', 0);
+    _prefs?.setInt('counter', 0);
+    _prefs?.setInt('malaRounds', 0);
     notifyListeners();
   }
 }

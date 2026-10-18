@@ -28,6 +28,10 @@ jobs:
         run: |
           flutter create --platforms=android --org com.bhaktiapps --project-name hanuman_chalisa .
           sed -i 's/android:label="hanuman_chalisa"/android:label="Hanuman Chalisa"/' android/app/src/main/AndroidManifest.xml
+          # Use the older, widely compatible graphics engine (avoids stuck screens on some phones)
+          sed -i '0,/<activity/s//<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" \/>\n        <activity/' android/app/src/main/AndroidManifest.xml
+          cat android/app/src/main/AndroidManifest.xml
+          flutter --version
 
       - name: Get packages
         run: flutter pub get
