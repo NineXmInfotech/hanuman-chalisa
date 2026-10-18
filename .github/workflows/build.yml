@@ -1,0 +1,48 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project files
+        run: |
+          flutter create --platforms=android --org com.bhaktiapps --project-name hanuman_chalisa .
+          sed -i 's/android:label="hanuman_chalisa"/android:label="Hanuman Chalisa"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk hanuman-chalisa-v1.0.${{ github.run_number }}.apk
+
+      - name: Publish APK as a download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Test build ${{ github.run_number }}
+          body: Download the .apk file below on your Android phone and install it to test.
+          prerelease: true
+          files: hanuman-chalisa-v1.0.${{ github.run_number }}.apk
