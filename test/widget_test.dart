@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hanuman_chalisa/chalisa_data.dart';
-import 'package:hanuman_chalisa/strings.dart';
+import 'package:hanumanchalisa/chalisa_data.dart';
+import 'package:hanumanchalisa/strings.dart';
 
 void main() {
   test('Chalisa has 40 chaupais and 3 dohas', () {

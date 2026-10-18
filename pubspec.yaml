@@ -1,4 +1,4 @@
-name: hanuman_chalisa
+name: hanumanchalisa
 description: Read and recite the Shri Hanuman Chalisa with meaning, transliteration and a mala counter.
 publish_to: 'none'
 version: 1.1.0+2
@@ -16,6 +16,14 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.0
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#D84315"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
 
 flutter:
   uses-material-design: true

@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android app
 
 on:
   push:
@@ -26,12 +26,12 @@ jobs:
 
       - name: Generate Android project files
         run: |
-          flutter create --platforms=android --org com.bhaktiapps --project-name hanuman_chalisa .
-          sed -i 's/android:label="hanuman_chalisa"/android:label="Hanuman Chalisa"/' android/app/src/main/AndroidManifest.xml
-          # Use the older, widely compatible graphics engine (avoids stuck screens on some phones)
-          sed -i '0,/<activity/s//<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" \/>\n        <activity/' android/app/src/main/AndroidManifest.xml
-          # Let the app find the phone's text-to-speech engine (Android 11+)
+          flutter create --platforms=android --org com.ninexminfotech --project-name hanumanchalisa .
           M=android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="hanumanchalisa"/android:label="Hanuman Chalisa"/' $M
+          # Use the older, widely compatible graphics engine (avoids stuck screens on some phones)
+          sed -i '0,/<activity/s//<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" \/>\n        <activity/' $M
+          # Let the app find the phone's text-to-speech engine (Android 11+)
           if grep -q '<queries>' $M; then
             sed -i 's#<queries>#<queries>\n        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>#' $M
           else
@@ -40,20 +40,46 @@ jobs:
           cat $M
           flutter --version
 
-      - name: Get packages
-        run: flutter pub get
+      - name: Get packages and app icon
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
 
-      - name: Build APK
-        run: flutter build apk --release
+      - name: Build APK (for testing) and AAB (for Play Store)
+        run: |
+          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build appbundle --release --build-number=${{ github.run_number }}
 
-      - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk hanuman-chalisa-v1.0.${{ github.run_number }}.apk
+      - name: Sign with the permanent upload key
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          N=${{ github.run_number }}
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          mkdir -p out
+          if [ -z "$SIGNING_PASSWORD" ]; then
+            echo "::warning::SIGNING_PASSWORD secret not set - this build uses a temporary test key and cannot be uploaded to Google Play."
+            cp $APK out/hanuman-chalisa-test-$N.apk
+            exit 0
+          fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android-signing/upload-keystore.jks.enc -out upload.jks -pass env:SIGNING_PASSWORD
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          $BT/apksigner sign --ks upload.jks --ks-key-alias upload --ks-pass env:SIGNING_PASSWORD --key-pass env:SIGNING_PASSWORD --out out/hanuman-chalisa-$N.apk $APK
+          $BT/apksigner verify out/hanuman-chalisa-$N.apk
+          cp $AAB out/hanuman-chalisa-$N.aab
+          zip -d out/hanuman-chalisa-$N.aab 'META-INF/*.SF' 'META-INF/*.RSA' 'META-INF/*.MF' || true
+          jarsigner -keystore upload.jks -storepass "$SIGNING_PASSWORD" -keypass "$SIGNING_PASSWORD" -sigalg SHA256withRSA -digestalg SHA-256 out/hanuman-chalisa-$N.aab upload
+          jarsigner -verify out/hanuman-chalisa-$N.aab
+          rm upload.jks
 
-      - name: Publish APK as a download
+      - name: Publish downloads
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Test build ${{ github.run_number }}
-          body: Download the .apk file below on your Android phone and install it to test.
+          name: Build ${{ github.run_number }}
+          body: |
+            .apk = install on your phone to test
+            .aab = upload to Google Play Console (only present when the signing password is set)
           prerelease: true
-          files: hanuman-chalisa-v1.0.${{ github.run_number }}.apk
+          files: out/*
