@@ -59,5 +59,11 @@ const Map<String, List<String>> appStrings = {
   'reset': ['रीसेट', 'રીસેટ', 'Reset'],
   'roundsDone': ['पूर्ण राउंड', 'પૂર્ણ રાઉન્ડ', 'Rounds completed'],
   'tapCircle': ['हर पाठ के बाद गोले पर टैप करें', 'દરેક પાઠ પછી વર્તુળ પર ટેપ કરો', 'Tap the circle after each recitation'],
+  'about': ['ऐप के बारे में', 'એપ વિશે', 'About'],
+  'aboutText': [
+    'श्री हनुमान चालीसा की रचना गोस्वामी तुलसीदास जी ने की है (पब्लिक डोमेन)। लिप्यंतरण और अर्थ इस ऐप के लिए लिखे गए हैं।',
+    'શ્રી હનુમાન ચાલીસાની રચના ગોસ્વામી તુલસીદાસજીએ કરી છે (પબ્લિક ડોમેન). લિપ્યંતર અને અર્થ આ એપ માટે લખવામાં આવ્યા છે.',
+    'Shri Hanuman Chalisa was composed by Goswami Tulsidas (public domain). Transliteration and meanings were written for this app.',
+  ],
   'roundDone': ['माला राउंड पूर्ण 🙏', 'માળા રાઉન્ડ પૂર્ણ 🙏', 'Mala round complete 🙏'],
 };

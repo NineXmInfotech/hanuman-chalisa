@@ -342,6 +342,25 @@ class HomeScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
+                    const SizedBox(height: 4),
+                    Center(
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.info_outline_rounded, size: 18),
+                        label: Text(t('about')),
+                        onPressed: () => showAboutDialog(
+                          context: context,
+                          applicationName: t('appTitle'),
+                          applicationVersion: '1.1',
+                          applicationIcon: const Text('🚩',
+                              style: TextStyle(fontSize: 32)),
+                          applicationLegalese: '© 2026 NineXm Infotech',
+                          children: [
+                            const SizedBox(height: 16),
+                            Text(t('aboutText')),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
