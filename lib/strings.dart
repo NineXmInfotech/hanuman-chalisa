@@ -65,5 +65,11 @@ const Map<String, List<String>> appStrings = {
     'શ્રી હનુમાન ચાલીસાની રચના ગોસ્વામી તુલસીદાસજીએ કરી છે (પબ્લિક ડોમેન). લિપ્યંતર અને અર્થ આ એપ માટે લખવામાં આવ્યા છે.',
     'Shri Hanuman Chalisa was composed by Goswami Tulsidas (public domain). Transliteration and meanings were written for this app.',
   ],
+  'silentNote': [
+    'इस फ़ोन में हिंदी आवाज़ नहीं मिली, इसलिए पाठ हाइलाइट के साथ चल रहा है। आवाज़ जोड़ने के लिए बटन दबाएँ।',
+    'આ ફોનમાં હિન્દી અવાજ મળ્યો નથી, તેથી પાઠ હાઇલાઇટ સાથે ચાલે છે. અવાજ ઉમેરવા બટન દબાવો.',
+    'No Hindi voice on this phone, so the path continues with highlighting. Tap the button to add the voice.',
+  ],
+  'installVoice': ['आवाज़ जोड़ें', 'અવાજ ઉમેરો', 'Install voice'],
   'roundDone': ['माला राउंड पूर्ण 🙏', 'માળા રાઉન્ડ પૂર્ણ 🙏', 'Mala round complete 🙏'],
 };

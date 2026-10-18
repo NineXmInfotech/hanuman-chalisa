@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -812,6 +813,11 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
 
   bool get _audioMode => widget.duration == null;
 
+  /// Pace used when the phone has no Hindi voice (close to a normal recitation).
+  static const Duration _normalDuration = Duration(minutes: 8);
+  Duration get _total => widget.duration ?? _normalDuration;
+  bool get _speaking => _audioMode && !_noVoice;
+
   @override
   void initState() {
     super.initState();
@@ -829,7 +835,15 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       WakelockPlus.enable();
     } catch (_) {}
 
-    if (_audioMode) _initTts();
+    if (_audioMode) {
+      _initTts();
+      // If the voice engine doesn't answer in time, use the read-along.
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted && !_ttsReady && !_noVoice) {
+          setState(() => _noVoice = true);
+        }
+      });
+    }
   }
 
   Future<void> _initTts() async {
@@ -861,6 +875,19 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     super.dispose();
   }
 
+  Future<void> _openVoiceInstall() async {
+    try {
+      await AndroidIntent(
+        action: 'android.speech.tts.engine.INSTALL_TTS_DATA',
+      ).launch();
+    } catch (_) {
+      try {
+        await AndroidIntent(action: 'com.android.settings.TTS_SETTINGS')
+            .launch();
+      } catch (_) {}
+    }
+  }
+
   void _scrollTo(int index) {
     final ctx = _keys[index].currentContext;
     if (ctx == null) return;
@@ -878,7 +905,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       _playing = true;
       _started = true;
     });
-    if (_audioMode) {
+    if (_speaking) {
       _speakLoop();
     } else {
       _startTimer();
@@ -929,10 +956,9 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       if (result != 1 || tookMs < 400) {
         quickFailures++;
         if (quickFailures >= 2) {
-          setState(() {
-            _playing = false;
-            _noVoice = true;
-          });
+          // No usable voice: carry on as a read-along from this verse.
+          setState(() => _noVoice = true);
+          _startTimer();
           return;
         }
         continue; // retry the same verse once
@@ -947,9 +973,12 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
   }
 
   void _startTimer() {
-    final total = widget.duration!;
+    final total = _total;
     const tick = Duration(milliseconds: 250);
     _timer?.cancel();
+    if (_elapsed == Duration.zero && _current > 0) {
+      _elapsed = total * _ends[_current - 1];
+    }
     _scrollTo(_current);
     _timer = Timer.periodic(tick, (timer) {
       if (!mounted) {
@@ -1010,18 +1039,18 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
 
     final double progress;
     final String status;
-    if (_audioMode) {
+    if (_speaking) {
       final done = _finished ? allVerses.length : _current;
       progress = done / allVerses.length;
       final shown = _current < allVerses.length ? _current + 1 : allVerses.length;
       status = '${t('verse')} $shown / ${allVerses.length}';
     } else {
-      final total = widget.duration!;
+      final total = _total;
       progress = _elapsed.inMilliseconds / total.inMilliseconds;
       status = '${t('timeLeft')}  ${formatTime(total - _elapsed)}';
     }
 
-    final canPlay = !_audioMode || (_ttsReady && !_noVoice);
+    final canPlay = !_audioMode || _ttsReady || _noVoice;
 
     return Scaffold(
       appBar: AppBar(
@@ -1041,14 +1070,14 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       ),
       body: Column(
         children: [
-          if (_noVoice)
+          if (_audioMode && _noVoice)
             MaterialBanner(
-              content: Text(t('noVoice')),
+              content: Text(t('silentNote')),
               leading: const Icon(Icons.record_voice_over_rounded),
               actions: [
-                TextButton(
-                  onPressed: () => setState(() => _noVoice = false),
-                  child: Text(t('ok')),
+                FilledButton.tonal(
+                  onPressed: _openVoiceInstall,
+                  child: Text(t('installVoice')),
                 ),
               ],
             ),
@@ -1103,7 +1132,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
                                   style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600)),
-                              if (_audioMode)
+                              if (_speaking)
                                 Text(t('voiceNote'),
                                     style: TextStyle(
                                         fontSize: 12,
