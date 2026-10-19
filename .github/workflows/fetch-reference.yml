@@ -1,0 +1,32 @@
+name: Fetch reference screenshots
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/ref_urls.txt
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        run: |
+          mkdir -p ref
+          i=1
+          while read -r u; do
+            [ -z "$u" ] && continue
+            curl -sL -o ref/s$i.png "${u}=w720-h1600" -w "s$i %{http_code} %{size_download}\n"
+            i=$((i+1))
+          done < tools/ref_urls.txt
+          cd ref && zip -q ../reference.zip *.png
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ref-${{ github.run_number }}
+          name: Reference ${{ github.run_number }}
+          prerelease: true
+          files: reference.zip
