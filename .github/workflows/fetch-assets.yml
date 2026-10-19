@@ -1,0 +1,36 @@
+name: Fetch licensed assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/fetch_assets.py
+      - .github/workflows/fetch-assets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download
+        run: python tools/fetch_assets.py
+      - name: Package
+        run: |
+          cd fetched && zip -q -r ../fetched-assets.zip . && cd ..
+          ls -la fetched/*
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: assets-${{ github.run_number }}
+          name: Fetched assets ${{ github.run_number }}
+          prerelease: true
+          files: |
+            fetched-assets.zip
+            fetched/report.json
