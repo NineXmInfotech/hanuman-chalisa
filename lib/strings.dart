@@ -75,5 +75,13 @@ const Map<String, List<String>> appStrings = {
   'voiceMale': ['पुरुष', 'પુરુષ', 'Male'],
   'voiceFemale': ['महिला', 'સ્ત્રી', 'Female'],
   'repeat': ['दोहराएँ', 'પુનરાવર્તન', 'Repeat'],
+  'puja': ['पूजा', 'પૂજા', 'Puja'],
+  'pujaSub': ['घंटी, शंख, पुष्प वर्षा और आरती', 'ઘંટ, શંખ, પુષ્પ વર્ષા અને આરતી', 'Bell, shankh, flowers and aarti'],
+  'pujaHint': ['पुष्प चढ़ाने के लिए चित्र पर टैप करें', 'પુષ્પ ચઢાવવા ચિત્ર પર ટેપ કરો', 'Tap the picture to offer flowers'],
+  'bell': ['घंटी', 'ઘંટ', 'Bell'],
+  'shankh': ['शंख', 'શંખ', 'Shankh'],
+  'flowers': ['पुष्प', 'પુષ્પ', 'Flowers'],
+  'aarti': ['आरती', 'આરતી', 'Aarti'],
+  'jaiHanuman': ['जय हनुमान', 'જય હનુમાન', 'Jai Hanuman'],
   'roundDone': ['माला राउंड पूर्ण 🙏', 'માળા રાઉન્ડ પૂર્ણ 🙏', 'Mala round complete 🙏'],
 };

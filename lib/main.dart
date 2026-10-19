@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -338,6 +339,14 @@ class HomeScreen extends StatelessWidget {
                       subtitle: t('listenSub'),
                       color: const Color(0xFFC62828),
                       onTap: () => _open(context, const PathPlayerScreen()),
+                    ),
+                    const SizedBox(height: 12),
+                    _BigButton(
+                      icon: Icons.local_florist_rounded,
+                      title: t('puja'),
+                      subtitle: t('pujaSub'),
+                      color: const Color(0xFFEF6C00),
+                      onTap: () => _open(context, const PujaScreen()),
                     ),
                     const SizedBox(height: 12),
                     _BigButton(
@@ -1052,7 +1061,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      for (final n in const [1, 3, 5, 11, 21])
+                      for (final n in const [1, 3, 7, 11, 21])
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: ChoiceChip(
@@ -1202,6 +1211,326 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Puja: bell, shankh, flower shower and diya aarti
+// ---------------------------------------------------------------------------
+
+class _Flower {
+  _Flower(math.Random r)
+      : x = r.nextDouble(),
+        delay = r.nextDouble() * 0.45,
+        speed = 0.55 + r.nextDouble() * 0.45,
+        size = 20 + r.nextDouble() * 16,
+        spin = (r.nextDouble() - 0.5) * 6,
+        drift = (r.nextDouble() - 0.5) * 0.12,
+        emoji = const ['🌼', '🌺', '🌸', '🏵️'][r.nextInt(4)];
+
+  final double x, delay, speed, size, spin, drift;
+  final String emoji;
+}
+
+class PujaScreen extends StatefulWidget {
+  const PujaScreen({super.key});
+
+  @override
+  State<PujaScreen> createState() => _PujaScreenState();
+}
+
+class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
+  final AudioPlayer _bell = AudioPlayer();
+  final AudioPlayer _shankh = AudioPlayer();
+  final math.Random _random = math.Random();
+
+  late final AnimationController _flowerCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 4200));
+  late final AnimationController _aartiCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 3200));
+  late final AnimationController _flicker = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 420))
+    ..repeat(reverse: true);
+
+  List<_Flower> _flowers = [];
+  int _aartiRounds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _bell.setAsset('assets/sounds/bell.mp3').catchError((_) => null);
+    _shankh.setAsset('assets/sounds/shankh.mp3').catchError((_) => null);
+    _aartiCtrl.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _aartiRounds--;
+        if (_aartiRounds > 0 && mounted) {
+          _ringBell();
+          _aartiCtrl.forward(from: 0);
+        } else {
+          setState(() {});
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _flowerCtrl.dispose();
+    _aartiCtrl.dispose();
+    _flicker.dispose();
+    _bell.dispose();
+    _shankh.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ringBell() async {
+    HapticFeedback.lightImpact();
+    try {
+      await _bell.seek(Duration.zero);
+      _bell.play();
+    } catch (_) {}
+  }
+
+  Future<void> _blowShankh() async {
+    HapticFeedback.mediumImpact();
+    try {
+      await _shankh.seek(Duration.zero);
+      _shankh.play();
+    } catch (_) {}
+  }
+
+  void _showerFlowers() {
+    HapticFeedback.selectionClick();
+    setState(() => _flowers = List.generate(40, (_) => _Flower(_random)));
+    _flowerCtrl.forward(from: 0);
+  }
+
+  void _startAarti() {
+    if (_aartiCtrl.isAnimating) return;
+    _aartiRounds = 4;
+    _ringBell();
+    setState(() {});
+    _aartiCtrl.forward(from: 0);
+  }
+
+  Widget _actionButton(String emoji, String label, VoidCallback onTap) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Material(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 30)),
+                  const SizedBox(height: 4),
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _diya() {
+    return AnimatedBuilder(
+      animation: _flicker,
+      builder: (context, _) {
+        final glow = 0.55 + 0.45 * _flicker.value;
+        return Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: -14,
+              child: Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFB300).withOpacity(0.55 * glow),
+                      blurRadius: 26 + 10 * glow,
+                      spreadRadius: 4 + 4 * glow,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Text('🪔', style: TextStyle(fontSize: 46)),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: Text(t('puja'))),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final w = box.maxWidth;
+                  final h = box.maxHeight;
+                  final size = math.min(w, h) * 0.62;
+                  final center = Offset(w / 2, h * 0.44);
+
+                  return Stack(
+                    children: [
+                      // Deity circle with garland
+                      Positioned(
+                        left: center.dx - size / 2,
+                        top: center.dy - size / 2,
+                        width: size,
+                        height: size,
+                        child: GestureDetector(
+                          onTap: _showerFlowers,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const RadialGradient(
+                                colors: [Color(0xFFFFE082), Color(0xFFFF8F00), Color(0xFFBF360C)],
+                                stops: [0.0, 0.6, 1.0],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: const Color(0xFFFF6F00).withOpacity(0.45),
+                                    blurRadius: 40,
+                                    spreadRadius: 6),
+                              ],
+                            ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.all(size * 0.12),
+                                  child: Image.asset('assets/icon/icon_foreground.png'),
+                                ),
+                                Positioned(
+                                  bottom: size * 0.08,
+                                  child: Text(
+                                    t('jaiHanuman'),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: size * 0.075,
+                                      shadows: const [Shadow(blurRadius: 6, color: Colors.black45)],
+                                    ),
+                                  ),
+                                ),
+                                for (int i = 0; i < 18; i++)
+                                  Transform.translate(
+                                    offset: Offset(
+                                      math.cos(i * math.pi * 2 / 18) * size * 0.5,
+                                      math.sin(i * math.pi * 2 / 18) * size * 0.5,
+                                    ),
+                                    child: Text(i.isEven ? '🌼' : '🌺',
+                                        style: TextStyle(fontSize: size * 0.085)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Diya: rests below the deity, circles it during aarti
+                      AnimatedBuilder(
+                        animation: _aartiCtrl,
+                        builder: (context, child) {
+                          Offset pos;
+                          if (_aartiCtrl.isAnimating) {
+                            final a = math.pi / 2 + _aartiCtrl.value * math.pi * 2;
+                            pos = Offset(
+                              center.dx + math.cos(a) * size * 0.66,
+                              center.dy + math.sin(a) * size * 0.62,
+                            );
+                          } else {
+                            pos = Offset(center.dx, center.dy + size * 0.62);
+                          }
+                          return Positioned(
+                            left: pos.dx - 30,
+                            top: pos.dy - 28,
+                            width: 60,
+                            height: 60,
+                            child: child!,
+                          );
+                        },
+                        child: Center(child: _diya()),
+                      ),
+
+                      // Falling flowers
+                      if (_flowers.isNotEmpty)
+                        IgnorePointer(
+                          child: AnimatedBuilder(
+                            animation: _flowerCtrl,
+                            builder: (context, _) {
+                              final p = _flowerCtrl.value;
+                              return Stack(
+                                children: [
+                                  for (final f in _flowers)
+                                    if (p > f.delay)
+                                      Builder(builder: (context) {
+                                        final local = ((p - f.delay) / (1 - f.delay)) * f.speed * 1.6;
+                                        final y = -40 + local * (h + 80);
+                                        final x = (f.x + math.sin(local * 6) * f.drift) * w;
+                                        return Positioned(
+                                          left: x - f.size / 2,
+                                          top: y,
+                                          child: Transform.rotate(
+                                            angle: local * f.spin,
+                                            child: Opacity(
+                                              opacity: (1 - p) > 0.15 ? 1.0 : ((1 - p) / 0.15).clamp(0.0, 1.0).toDouble(),
+                                              child: Text(f.emoji,
+                                                  style: TextStyle(fontSize: f.size)),
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            Text(t('pujaHint'),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(11, 12, 11, 16),
+              child: Row(
+                children: [
+                  _actionButton('🔔', t('bell'), _ringBell),
+                  _actionButton('🐚', t('shankh'), _blowShankh),
+                  _actionButton('🌼', t('flowers'), _showerFlowers),
+                  _actionButton('🪔', t('aarti'), _startAarti),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
