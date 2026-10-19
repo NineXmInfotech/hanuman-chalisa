@@ -35,12 +35,6 @@ jobs:
           sed -i 's/android:label="hanumanchalisa"/android:label="Hanuman Chalisa"/' $M
           # Use the older, widely compatible graphics engine (avoids stuck screens on some phones)
           sed -i '0,/<activity/s//<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" \/>\n        <activity/' $M
-          # Let the app find the phone's text-to-speech engine (Android 11+)
-          if grep -q '<queries>' $M; then
-            sed -i 's#<queries>#<queries>\n        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>#' $M
-          else
-            sed -i 's#</manifest>#    <queries><intent><action android:name="android.intent.action.TTS_SERVICE" /></intent></queries>\n</manifest>#' $M
-          fi
           cat $M
           flutter --version
 
@@ -51,7 +45,7 @@ jobs:
 
       - name: Build APK (for testing) and AAB (for Play Store)
         run: |
-          flutter build apk --release --build-number=${{ github.run_number }}
+          flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-number=${{ github.run_number }}
           flutter build appbundle --release --build-number=${{ github.run_number }}
 
       - name: Sign with the permanent upload key
@@ -59,7 +53,7 @@ jobs:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           N=${{ github.run_number }}
-          APK=build/app/outputs/flutter-apk/app-release.apk
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           AAB=build/app/outputs/bundle/release/app-release.aab
           mkdir -p out
           if [ -z "$SIGNING_PASSWORD" ]; then

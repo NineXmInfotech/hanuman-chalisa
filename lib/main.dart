@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -52,6 +51,9 @@ String verseLabel(Verse v) => v.kind == VerseKind.doha
     ? t('doha')
     : '${t('chaupai')} ${v.number}';
 
+String audioAsset(int voice, int index) =>
+    'assets/audio/${voice == 1 ? 'female' : 'male'}/v${(index + 1).toString().padLeft(2, '0')}.mp3';
+
 String formatTime(Duration d) {
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
   final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -97,7 +99,9 @@ class AppSettings extends ChangeNotifier {
         pathCount = prefs?.getInt('pathCount') ?? 0,
         malaTarget = prefs?.getInt('malaTarget') ?? 108,
         counter = prefs?.getInt('counter') ?? 0,
-        malaRounds = prefs?.getInt('malaRounds') ?? 0;
+        malaRounds = prefs?.getInt('malaRounds') ?? 0,
+        voice = prefs?.getInt('voice') ?? 0,
+        repeatCount = prefs?.getInt('repeatCount') ?? 1;
 
   static int _validLang(int? value) {
     if (value == null || value < 0 || value > 2) return 0;
@@ -114,6 +118,20 @@ class AppSettings extends ChangeNotifier {
   int malaTarget;
   int counter;
   int malaRounds;
+  int voice; // 0 = male, 1 = female
+  int repeatCount;
+
+  void setVoice(int value) {
+    voice = value == 1 ? 1 : 0;
+    _prefs?.setInt('voice', voice);
+    notifyListeners();
+  }
+
+  void setRepeatCount(int value) {
+    repeatCount = value < 1 ? 1 : value;
+    _prefs?.setInt('repeatCount', repeatCount);
+    notifyListeners();
+  }
 
   ThemeMode get themeMode {
     if (themeIndex == 1) return ThemeMode.light;
@@ -779,11 +797,11 @@ class TimedChoiceScreen extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Path player: listen (audio) or timed (silent pacer)
+// Path player: listen (built-in audio) or timed (silent pacer)
 // ---------------------------------------------------------------------------
 
 class PathPlayerScreen extends StatefulWidget {
-  /// When null, the Chalisa is recited aloud verse by verse.
+  /// When null, the built-in recitation plays verse by verse.
   /// Otherwise verses are highlighted so the path ends in [duration].
   const PathPlayerScreen({super.key, this.duration});
 
@@ -797,11 +815,12 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
   final List<GlobalKey> _keys =
       List.generate(allVerses.length, (_) => GlobalKey());
 
-  FlutterTts? _tts;
-  bool _ttsReady = false;
-  bool _noVoice = false;
+  AudioPlayer? _player;
+  int _loadedIndex = -1;
+  int _loadedVoice = -1;
 
   int _current = 0;
+  int _round = 1; // which repetition is playing
   bool _playing = false;
   bool _started = false;
   bool _finished = false;
@@ -813,18 +832,12 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
 
   bool get _audioMode => widget.duration == null;
 
-  /// Pace used when the phone has no Hindi voice (close to a normal recitation).
-  static const Duration _normalDuration = Duration(minutes: 8);
-  Duration get _total => widget.duration ?? _normalDuration;
-  bool get _speaking => _audioMode && !_noVoice;
-
   @override
   void initState() {
     super.initState();
 
     // Longer verses get proportionally more time in timed mode.
-    final weights =
-        allVerses.map((v) => v.hindi.length.toDouble()).toList();
+    final weights = allVerses.map((v) => v.hindi.length.toDouble()).toList();
     final total = weights.fold<double>(0, (a, b) => a + b);
     double running = 0;
     _ends = [
@@ -835,57 +848,18 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       WakelockPlus.enable();
     } catch (_) {}
 
-    if (_audioMode) {
-      _initTts();
-      // If the voice engine doesn't answer in time, use the read-along.
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && !_ttsReady && !_noVoice) {
-          setState(() => _noVoice = true);
-        }
-      });
-    }
-  }
-
-  Future<void> _initTts() async {
-    try {
-      final tts = FlutterTts();
-      await tts.awaitSpeakCompletion(true);
-      final available = await tts.isLanguageAvailable('hi-IN');
-      if (available == false) {
-        if (mounted) setState(() => _noVoice = true);
-      }
-      await tts.setLanguage('hi-IN');
-      await tts.setSpeechRate(0.42);
-      await tts.setPitch(1.0);
-      _tts = tts;
-      if (mounted) setState(() => _ttsReady = true);
-    } catch (_) {
-      if (mounted) setState(() => _noVoice = true);
-    }
+    if (_audioMode) _player = AudioPlayer();
   }
 
   @override
   void dispose() {
     _runId++;
     _timer?.cancel();
-    _tts?.stop();
+    _player?.dispose();
     try {
       WakelockPlus.disable();
     } catch (_) {}
     super.dispose();
-  }
-
-  Future<void> _openVoiceInstall() async {
-    try {
-      await AndroidIntent(
-        action: 'android.speech.tts.engine.INSTALL_TTS_DATA',
-      ).launch();
-    } catch (_) {
-      try {
-        await AndroidIntent(action: 'com.android.settings.TTS_SETTINGS')
-            .launch();
-      } catch (_) {}
-    }
   }
 
   void _scrollTo(int index) {
@@ -905,8 +879,8 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       _playing = true;
       _started = true;
     });
-    if (_speaking) {
-      _speakLoop();
+    if (_audioMode) {
+      _audioLoop();
     } else {
       _startTimer();
     }
@@ -915,15 +889,17 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
   void _pause() {
     _runId++;
     _timer?.cancel();
-    _tts?.stop();
+    _player?.pause();
     setState(() => _playing = false);
   }
 
   void _resetState() {
     _runId++;
     _timer?.cancel();
-    _tts?.stop();
+    _player?.stop();
+    _loadedIndex = -1;
     _current = 0;
+    _round = 1;
     _elapsed = Duration.zero;
     _finished = false;
     _playing = false;
@@ -935,50 +911,53 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     _scrollTo(0);
   }
 
-  Future<void> _speakLoop() async {
-    final tts = _tts;
-    if (tts == null) return;
+  Future<void> _audioLoop() async {
+    final player = _player;
+    if (player == null) return;
     final id = ++_runId;
-    int quickFailures = 0;
+    int stalls = 0;
 
-    while (mounted && _playing && id == _runId && _current < allVerses.length) {
+    while (mounted && _playing && id == _runId) {
+      if (_current >= allVerses.length) {
+        // One full path finished.
+        settings.completePath();
+        if (_round < settings.repeatCount) {
+          setState(() {
+            _round++;
+            _current = 0;
+          });
+          _scrollTo(0);
+          continue;
+        }
+        _complete(alreadyCounted: true);
+        return;
+      }
+
       _scrollTo(_current);
-      final started = DateTime.now();
-      dynamic result;
       try {
-        result = await tts.speak(allVerses[_current].hindi.replaceAll('\n', ' '));
+        if (_loadedIndex != _current || _loadedVoice != settings.voice) {
+          await player.setAsset(audioAsset(settings.voice, _current));
+          _loadedIndex = _current;
+          _loadedVoice = settings.voice;
+        }
+        await player.play();
       } catch (_) {
-        result = 0;
+        // If a file can't play, move on rather than getting stuck.
       }
       if (!mounted || !_playing || id != _runId) return;
-
-      final tookMs = DateTime.now().difference(started).inMilliseconds;
-      if (result != 1 || tookMs < 400) {
-        quickFailures++;
-        if (quickFailures >= 2) {
-          // No usable voice: carry on as a read-along from this verse.
-          setState(() => _noVoice = true);
-          _startTimer();
-          return;
-        }
-        continue; // retry the same verse once
+      final done = player.processingState == ProcessingState.completed;
+      if (done || _loadedIndex != _current || ++stalls > 2) {
+        stalls = 0;
+        _loadedIndex = -1;
+        setState(() => _current++);
       }
-      quickFailures = 0;
-      setState(() => _current++);
-    }
-
-    if (mounted && id == _runId && _current >= allVerses.length) {
-      _complete();
     }
   }
 
   void _startTimer() {
-    final total = _total;
+    final total = widget.duration!;
     const tick = Duration(milliseconds: 250);
     _timer?.cancel();
-    if (_elapsed == Duration.zero && _current > 0) {
-      _elapsed = total * _ends[_current - 1];
-    }
     _scrollTo(_current);
     _timer = Timer.periodic(tick, (timer) {
       if (!mounted) {
@@ -1007,13 +986,13 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     });
   }
 
-  void _complete() {
+  void _complete({bool alreadyCounted = false}) {
     if (_finished) return;
     setState(() {
       _finished = true;
       _playing = false;
     });
-    settings.completePath();
+    if (!alreadyCounted) settings.completePath();
     HapticFeedback.heavyImpact();
     showDialog<void>(
       context: context,
@@ -1030,6 +1009,70 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     );
   }
 
+  Widget _audioOptions(ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                  width: 72,
+                  child: Text(t('voice'),
+                      style: TextStyle(color: scheme.onSurfaceVariant))),
+              Expanded(
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ButtonSegment(value: 0, label: Text(t('voiceMale'))),
+                    ButtonSegment(value: 1, label: Text(t('voiceFemale'))),
+                  ],
+                  selected: {settings.voice},
+                  onSelectionChanged: (s) {
+                    final wasPlaying = _playing;
+                    if (wasPlaying) _pause();
+                    settings.setVoice(s.first);
+                    setState(() => _loadedIndex = -1);
+                    if (wasPlaying) _play();
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              SizedBox(
+                  width: 72,
+                  child: Text(t('repeat'),
+                      style: TextStyle(color: scheme.onSurfaceVariant))),
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final n in const [1, 3, 5, 11, 21])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: ChoiceChip(
+                            label: Text('$n×'),
+                            selected: settings.repeatCount == n,
+                            onSelected: (_) =>
+                                setState(() => settings.setRepeatCount(n)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -1039,18 +1082,17 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
 
     final double progress;
     final String status;
-    if (_speaking) {
+    if (_audioMode) {
       final done = _finished ? allVerses.length : _current;
       progress = done / allVerses.length;
-      final shown = _current < allVerses.length ? _current + 1 : allVerses.length;
+      final shown =
+          _current < allVerses.length ? _current + 1 : allVerses.length;
       status = '${t('verse')} $shown / ${allVerses.length}';
     } else {
-      final total = _total;
+      final total = widget.duration!;
       progress = _elapsed.inMilliseconds / total.inMilliseconds;
       status = '${t('timeLeft')}  ${formatTime(total - _elapsed)}';
     }
-
-    final canPlay = !_audioMode || _ttsReady || _noVoice;
 
     return Scaffold(
       appBar: AppBar(
@@ -1070,17 +1112,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       ),
       body: Column(
         children: [
-          if (_audioMode && _noVoice)
-            MaterialBanner(
-              content: Text(t('silentNote')),
-              leading: const Icon(Icons.record_voice_over_rounded),
-              actions: [
-                FilledButton.tonal(
-                  onPressed: _openVoiceInstall,
-                  child: Text(t('installVoice')),
-                ),
-              ],
-            ),
+          if (_audioMode) _audioOptions(scheme),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -1132,8 +1164,9 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
                                   style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600)),
-                              if (_speaking)
-                                Text(t('voiceNote'),
+                              if (_audioMode && settings.repeatCount > 1)
+                                Text(
+                                    '${t('repeat')} $_round / ${settings.repeatCount}',
                                     style: TextStyle(
                                         fontSize: 12,
                                         color: scheme.onSurfaceVariant)),
@@ -1148,9 +1181,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
                         const SizedBox(width: 8),
                         FloatingActionButton(
                           heroTag: null,
-                          onPressed: !canPlay
-                              ? null
-                              : (_playing ? _pause : _play),
+                          onPressed: _playing ? _pause : _play,
                           tooltip: _playing
                               ? t('pause')
                               : (_started && !_finished

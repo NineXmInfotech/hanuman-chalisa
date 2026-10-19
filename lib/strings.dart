@@ -13,7 +13,7 @@ const Map<String, List<String>> appStrings = {
   'read': ['पाठ पढ़ें', 'પાઠ વાંચો', 'Read Chalisa'],
   'readSub': ['हर पंक्ति के अर्थ के साथ', 'દરેક પંક્તિના અર્થ સાથે', 'With the meaning of every verse'],
   'listen': ['चालीसा सुनें', 'ચાલીસા સાંભળો', 'Listen to Chalisa'],
-  'listenSub': ['सुनें और साथ-साथ पढ़ें', 'સાંભળો અને સાથે વાંચો', 'Listen and read along'],
+  'listenSub': ['ऑफ़लाइन आवाज़, साथ-साथ पढ़ें', 'ઓફલાઇન અવાજ, સાથે વાંચો', 'Built-in voice, read along'],
   'timed': ['समय में पाठ', 'સમયમાં પાઠ', 'Timed path'],
   'timedSub': ['3, 6 या 10 मिनट में पाठ पूरा करें', '3, 6 કે 10 મિનિટમાં પાઠ પૂરો કરો', 'Finish in 3, 6 or 10 minutes'],
   'counter': ['माला गिनती', 'માળા ગણતરી', 'Mala counter'],
@@ -61,9 +61,9 @@ const Map<String, List<String>> appStrings = {
   'tapCircle': ['हर पाठ के बाद गोले पर टैप करें', 'દરેક પાઠ પછી વર્તુળ પર ટેપ કરો', 'Tap the circle after each recitation'],
   'about': ['ऐप के बारे में', 'એપ વિશે', 'About'],
   'aboutText': [
-    'श्री हनुमान चालीसा की रचना गोस्वामी तुलसीदास जी ने की है (पब्लिक डोमेन)। लिप्यंतरण और अर्थ इस ऐप के लिए लिखे गए हैं।',
-    'શ્રી હનુમાન ચાલીસાની રચના ગોસ્વામી તુલસીદાસજીએ કરી છે (પબ્લિક ડોમેન). લિપ્યંતર અને અર્થ આ એપ માટે લખવામાં આવ્યા છે.',
-    'Shri Hanuman Chalisa was composed by Goswami Tulsidas (public domain). Transliteration and meanings were written for this app.',
+    'श्री हनुमान चालीसा की रचना गोस्वामी तुलसीदास जी ने की है (पब्लिक डोमेन)। लिप्यंतरण और अर्थ इस ऐप के लिए लिखे गए हैं। आवाज़ Kokoro ओपन-सोर्स मॉडल (Apache 2.0 लाइसेंस) से बनाई गई है।',
+    'શ્રી હનુમાન ચાલીસાની રચના ગોસ્વામી તુલસીદાસજીએ કરી છે (પબ્લિક ડોમેન). લિપ્યંતર અને અર્થ આ એપ માટે લખવામાં આવ્યા છે. અવાજ Kokoro ઓપન-સોર્સ મોડેલ (Apache 2.0 લાઇસન્સ)થી બનાવ્યો છે.',
+    'Shri Hanuman Chalisa was composed by Goswami Tulsidas (public domain). Transliteration and meanings were written for this app. Voice generated with Kokoro, an open-source speech model (Apache 2.0 license).',
   ],
   'silentNote': [
     'इस फ़ोन में हिंदी आवाज़ नहीं मिली, इसलिए पाठ हाइलाइट के साथ चल रहा है। आवाज़ जोड़ने के लिए बटन दबाएँ।',
@@ -71,5 +71,9 @@ const Map<String, List<String>> appStrings = {
     'No Hindi voice on this phone, so the path continues with highlighting. Tap the button to add the voice.',
   ],
   'installVoice': ['आवाज़ जोड़ें', 'અવાજ ઉમેરો', 'Install voice'],
+  'voice': ['आवाज़', 'અવાજ', 'Voice'],
+  'voiceMale': ['पुरुष', 'પુરુષ', 'Male'],
+  'voiceFemale': ['महिला', 'સ્ત્રી', 'Female'],
+  'repeat': ['दोहराएँ', 'પુનરાવર્તન', 'Repeat'],
   'roundDone': ['माला राउंड पूर्ण 🙏', 'માળા રાઉન્ડ પૂર્ણ 🙏', 'Mala round complete 🙏'],
 };
