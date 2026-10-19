@@ -3,11 +3,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart' as ap;
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'chalisa_data.dart';
+import 'media.dart';
+import 'reminder.dart';
 import 'strings.dart';
 
 late final AppSettings settings;
@@ -30,6 +34,18 @@ Future<void> main() async {
   }
   settings = AppSettings(prefs);
 
+  await MediaLibrary.load();
+  try {
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.ninexminfotech.hanumanchalisa.audio',
+      androidNotificationChannelName: 'Hanuman Chalisa',
+      androidNotificationOngoing: true,
+    ).timeout(const Duration(seconds: 4));
+  } catch (_) {}
+  try {
+    await ReminderService.init().timeout(const Duration(seconds: 4));
+  } catch (_) {}
+
   runApp(const ChalisaApp());
 }
 
@@ -51,9 +67,6 @@ String verseMeaning(Verse v) =>
 String verseLabel(Verse v) => v.kind == VerseKind.doha
     ? t('doha')
     : '${t('chaupai')} ${v.number}';
-
-String audioAsset(int voice, int index) =>
-    'assets/audio/${voice == 1 ? 'female' : 'male'}/v${(index + 1).toString().padLeft(2, '0')}.mp3';
 
 String formatTime(Duration d) {
   final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -102,7 +115,19 @@ class AppSettings extends ChangeNotifier {
         counter = prefs?.getInt('counter') ?? 0,
         malaRounds = prefs?.getInt('malaRounds') ?? 0,
         voice = prefs?.getInt('voice') ?? 0,
-        repeatCount = prefs?.getInt('repeatCount') ?? 1;
+        repeatCount = prefs?.getInt('repeatCount') ?? 1,
+        musicOn = prefs?.getBool('musicOn') ?? true,
+        musicTrack = prefs?.getInt('musicTrack') ?? 0,
+        listenMinutes = prefs?.getInt('listenMinutes') ?? 8,
+        slideSeconds = prefs?.getInt('slideSeconds') ?? 8,
+        ramMode = prefs?.getBool('ramMode') ?? false,
+        totalJap = prefs?.getInt('totalJap') ?? 0,
+        reminderOn = prefs?.getBool('reminderOn') ?? false,
+        reminderHour = prefs?.getInt('reminderHour') ?? 7,
+        reminderMinute = prefs?.getInt('reminderMinute') ?? 0,
+        reminderDays = (prefs?.getStringList('reminderDays') ?? const ['2', '6'])
+            .map((d) => int.tryParse(d) ?? 2)
+            .toList();
 
   static int _validLang(int? value) {
     if (value == null || value < 0 || value > 2) return 0;
@@ -121,6 +146,58 @@ class AppSettings extends ChangeNotifier {
   int malaRounds;
   int voice; // 0 = male, 1 = female
   int repeatCount;
+  bool musicOn;
+  int musicTrack;
+  int listenMinutes;
+  int slideSeconds;
+  bool ramMode;
+  int totalJap;
+  bool reminderOn;
+  int reminderHour;
+  int reminderMinute;
+  List<int> reminderDays; // 1 = Monday … 7 = Sunday
+
+  void setMusicOn(bool v) {
+    musicOn = v;
+    _prefs?.setBool('musicOn', v);
+    notifyListeners();
+  }
+
+  void setMusicTrack(int v) {
+    musicTrack = v;
+    _prefs?.setInt('musicTrack', v);
+    notifyListeners();
+  }
+
+  void setListenMinutes(int v) {
+    listenMinutes = v;
+    _prefs?.setInt('listenMinutes', v);
+    notifyListeners();
+  }
+
+  void setSlideSeconds(int v) {
+    slideSeconds = v;
+    _prefs?.setInt('slideSeconds', v);
+    notifyListeners();
+  }
+
+  void setRamMode(bool v) {
+    ramMode = v;
+    _prefs?.setBool('ramMode', v);
+    notifyListeners();
+  }
+
+  void setReminder(bool on, int hour, int minute, List<int> days) {
+    reminderOn = on;
+    reminderHour = hour;
+    reminderMinute = minute;
+    reminderDays = days;
+    _prefs?.setBool('reminderOn', on);
+    _prefs?.setInt('reminderHour', hour);
+    _prefs?.setInt('reminderMinute', minute);
+    _prefs?.setStringList('reminderDays', days.map((d) => '$d').toList());
+    notifyListeners();
+  }
 
   void setVoice(int value) {
     voice = value == 1 ? 1 : 0;
@@ -184,6 +261,8 @@ class AppSettings extends ChangeNotifier {
   /// Returns true when a full mala round has just been completed.
   bool increment() {
     counter++;
+    totalJap++;
+    _prefs?.setInt('totalJap', totalJap);
     bool roundDone = false;
     if (counter >= malaTarget) {
       counter = 0;
@@ -223,6 +302,9 @@ class ChalisaApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: ThemeData(
             useMaterial3: true,
+            pageTransitionsTheme: const PageTransitionsTheme(builders: {
+              TargetPlatform.android: ZoomPageTransitionsBuilder(),
+            }),
             colorScheme: ColorScheme.fromSeed(seedColor: saffron),
             scaffoldBackgroundColor: const Color(0xFFFFF8F0),
           ),
@@ -291,15 +373,41 @@ class HomeScreen extends StatelessWidget {
                         const _ThemeMenu(),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    const Text('🚩', style: TextStyle(fontSize: 44)),
-                    const SizedBox(height: 8),
-                    Text(
-                      t('appTitle'),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('🚩', style: TextStyle(fontSize: 40)),
+                              const SizedBox(height: 8),
+                              Text(
+                                t('appTitle'),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (MediaLibrary.images.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 16),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 3),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black26, blurRadius: 12),
+                                ],
+                              ),
+                              child: const HanumanSlideshow(size: 104),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -363,6 +471,16 @@ class HomeScreen extends StatelessWidget {
                       subtitle: t('counterSub'),
                       color: scheme.tertiary,
                       onTap: () => _open(context, const CounterScreen()),
+                    ),
+                    const SizedBox(height: 12),
+                    _BigButton(
+                      icon: Icons.alarm_rounded,
+                      title: t('reminder'),
+                      subtitle: settings.reminderOn
+                          ? '${t('reminderOnAt')} ${TimeOfDay(hour: settings.reminderHour, minute: settings.reminderMinute).format(context)}'
+                          : t('reminderSub'),
+                      color: const Color(0xFF5D4037),
+                      onTap: () => _open(context, const ReminderScreen()),
                     ),
                     const SizedBox(height: 28),
                     Text(
@@ -806,11 +924,11 @@ class TimedChoiceScreen extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Path player: listen (built-in audio) or timed (silent pacer)
+// Path player: verses highlight at a steady pace, with devotional music
 // ---------------------------------------------------------------------------
 
 class PathPlayerScreen extends StatefulWidget {
-  /// When null, the built-in recitation plays verse by verse.
+  /// When null this is the Listen screen (pace, repeat and music options).
   /// Otherwise verses are highlighted so the path ends in [duration].
   const PathPlayerScreen({super.key, this.duration});
 
@@ -824,47 +942,70 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
   final List<GlobalKey> _keys =
       List.generate(allVerses.length, (_) => GlobalKey());
 
-  AudioPlayer? _player;
-  int _loadedIndex = -1;
-  int _loadedVoice = -1;
+  AudioPlayer? _music;
+  bool _musicReady = false;
 
   int _current = 0;
-  int _round = 1; // which repetition is playing
+  int _round = 1;
   bool _playing = false;
   bool _started = false;
   bool _finished = false;
-  int _runId = 0;
 
   Timer? _timer;
   Duration _elapsed = Duration.zero;
   late final List<double> _ends; // cumulative share of total time per verse
 
-  bool get _audioMode => widget.duration == null;
+  bool get _listenMode => widget.duration == null;
+  Duration get _total =>
+      widget.duration ?? Duration(minutes: settings.listenMinutes);
+  bool get _hasMusic => MediaLibrary.music.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-
-    // Longer verses get proportionally more time in timed mode.
     final weights = allVerses.map((v) => v.hindi.length.toDouble()).toList();
     final total = weights.fold<double>(0, (a, b) => a + b);
     double running = 0;
     _ends = [
       for (final w in weights) (running += w) / total,
     ];
-
     try {
       WakelockPlus.enable();
     } catch (_) {}
+    _initMusic();
+  }
 
-    if (_audioMode) _player = AudioPlayer();
+  Future<void> _initMusic() async {
+    if (!_hasMusic) return;
+    try {
+      final player = AudioPlayer();
+      _music = player;
+      await _loadTrack();
+      await player.setLoopMode(LoopMode.one);
+      if (mounted) setState(() => _musicReady = true);
+    } catch (_) {
+      _music = null;
+    }
+  }
+
+  Future<void> _loadTrack() async {
+    final list = MediaLibrary.music;
+    final path = list[settings.musicTrack % list.length];
+    await _music?.setAudioSource(AudioSource.asset(
+      path,
+      tag: MediaItem(
+        id: path,
+        title: t('appTitle'),
+        artist: 'NineXm Infotech',
+        album: t('jaiShriRam'),
+      ),
+    ));
   }
 
   @override
   void dispose() {
-    _runId++;
     _timer?.cancel();
-    _player?.dispose();
+    _music?.dispose();
     try {
       WakelockPlus.disable();
     } catch (_) {}
@@ -882,31 +1023,34 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     );
   }
 
+  void _startMusic() {
+    if (_musicReady && settings.musicOn) {
+      try {
+        _music?.play();
+      } catch (_) {}
+    }
+  }
+
   void _play() {
     if (_finished) _resetState();
     setState(() {
       _playing = true;
       _started = true;
     });
-    if (_audioMode) {
-      _audioLoop();
-    } else {
-      _startTimer();
-    }
+    _startMusic();
+    _startTimer();
   }
 
   void _pause() {
-    _runId++;
     _timer?.cancel();
-    _player?.pause();
+    _music?.pause();
     setState(() => _playing = false);
   }
 
   void _resetState() {
-    _runId++;
     _timer?.cancel();
-    _player?.stop();
-    _loadedIndex = -1;
+    _music?.pause();
+    _music?.seek(Duration.zero);
     _current = 0;
     _round = 1;
     _elapsed = Duration.zero;
@@ -920,51 +1064,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     _scrollTo(0);
   }
 
-  Future<void> _audioLoop() async {
-    final player = _player;
-    if (player == null) return;
-    final id = ++_runId;
-    int stalls = 0;
-
-    while (mounted && _playing && id == _runId) {
-      if (_current >= allVerses.length) {
-        // One full path finished.
-        settings.completePath();
-        if (_round < settings.repeatCount) {
-          setState(() {
-            _round++;
-            _current = 0;
-          });
-          _scrollTo(0);
-          continue;
-        }
-        _complete(alreadyCounted: true);
-        return;
-      }
-
-      _scrollTo(_current);
-      try {
-        if (_loadedIndex != _current || _loadedVoice != settings.voice) {
-          await player.setAsset(audioAsset(settings.voice, _current));
-          _loadedIndex = _current;
-          _loadedVoice = settings.voice;
-        }
-        await player.play();
-      } catch (_) {
-        // If a file can't play, move on rather than getting stuck.
-      }
-      if (!mounted || !_playing || id != _runId) return;
-      final done = player.processingState == ProcessingState.completed;
-      if (done || _loadedIndex != _current || ++stalls > 2) {
-        stalls = 0;
-        _loadedIndex = -1;
-        setState(() => _current++);
-      }
-    }
-  }
-
   void _startTimer() {
-    final total = widget.duration!;
     const tick = Duration(milliseconds: 250);
     _timer?.cancel();
     _scrollTo(_current);
@@ -973,14 +1073,28 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
         timer.cancel();
         return;
       }
+      final total = _total;
       _elapsed += tick;
       if (_elapsed >= total) {
+        if (_listenMode) {
+          settings.completePath();
+          if (_round < settings.repeatCount) {
+            setState(() {
+              _round++;
+              _elapsed = Duration.zero;
+              _current = 0;
+            });
+            _scrollTo(0);
+            return;
+          }
+        }
         timer.cancel();
+        _music?.pause();
         setState(() {
           _elapsed = total;
           _current = allVerses.length - 1;
         });
-        _complete();
+        _complete(alreadyCounted: _listenMode);
         return;
       }
       final share = _elapsed.inMilliseconds / total.inMilliseconds;
@@ -990,7 +1104,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
         setState(() => _current = index);
         _scrollTo(index);
       } else {
-        setState(() {}); // update countdown
+        setState(() {});
       }
     });
   }
@@ -1018,65 +1132,83 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
     );
   }
 
-  Widget _audioOptions(ColorScheme scheme) {
+  void _toggleMusic() {
+    settings.setMusicOn(!settings.musicOn);
+    if (settings.musicOn && _playing) {
+      _startMusic();
+    } else {
+      _music?.pause();
+    }
+    setState(() {});
+  }
+
+  Future<void> _chooseTrack(int index) async {
+    settings.setMusicTrack(index);
+    final wasPlaying = _playing && settings.musicOn;
+    try {
+      await _music?.pause();
+      await _loadTrack();
+      if (wasPlaying) _startMusic();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  Widget _optionRow(String label, List<Widget> chips) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
         children: [
-          Row(
-            children: [
-              SizedBox(
-                  width: 72,
-                  child: Text(t('voice'),
-                      style: TextStyle(color: scheme.onSurfaceVariant))),
-              Expanded(
-                child: SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(value: 0, label: Text(t('voiceMale'))),
-                    ButtonSegment(value: 1, label: Text(t('voiceFemale'))),
-                  ],
-                  selected: {settings.voice},
-                  onSelectionChanged: (s) {
-                    final wasPlaying = _playing;
-                    if (wasPlaying) _pause();
-                    settings.setVoice(s.first);
-                    setState(() => _loadedIndex = -1);
-                    if (wasPlaying) _play();
-                  },
-                ),
-              ),
-            ],
+          SizedBox(
+            width: 76,
+            child: Text(label, style: TextStyle(color: scheme.onSurfaceVariant)),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              SizedBox(
-                  width: 72,
-                  child: Text(t('repeat'),
-                      style: TextStyle(color: scheme.onSurfaceVariant))),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final n in const [1, 3, 7, 11, 21])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: ChoiceChip(
-                            label: Text('$n×'),
-                            selected: settings.repeatCount == n,
-                            onSelected: (_) =>
-                                setState(() => settings.setRepeatCount(n)),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: chips),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+      ),
+    );
+  }
+
+  Widget _listenOptions() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      child: Column(
+        children: [
+          _optionRow(t('repeat'), [
+            for (final n in const [1, 3, 7, 11, 21])
+              _chip('$n×', settings.repeatCount == n,
+                  () => setState(() => settings.setRepeatCount(n))),
+          ]),
+          _optionRow(t('pace'), [
+            for (final m in const [6, 8, 10])
+              _chip('$m ${t('min')}', settings.listenMinutes == m, () {
+                if (_started && !_finished) return; // change pace before starting
+                setState(() => settings.setListenMinutes(m));
+              }),
+          ]),
+          if (MediaLibrary.music.length > 1)
+            _optionRow(t('music'), [
+              for (int i = 0; i < MediaLibrary.music.length; i++)
+                _chip('${t('music')} ${i + 1}',
+                    settings.musicTrack % MediaLibrary.music.length == i,
+                    () => _chooseTrack(i)),
+            ]),
         ],
       ),
     );
@@ -1085,28 +1217,27 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final title = _audioMode
+    final title = _listenMode
         ? t('listen')
         : '${widget.duration!.inMinutes} ${t('minutes')}';
-
-    final double progress;
-    final String status;
-    if (_audioMode) {
-      final done = _finished ? allVerses.length : _current;
-      progress = done / allVerses.length;
-      final shown =
-          _current < allVerses.length ? _current + 1 : allVerses.length;
-      status = '${t('verse')} $shown / ${allVerses.length}';
-    } else {
-      final total = widget.duration!;
-      progress = _elapsed.inMilliseconds / total.inMilliseconds;
-      status = '${t('timeLeft')}  ${formatTime(total - _elapsed)}';
-    }
+    final total = _total;
+    final progress = _elapsed.inMilliseconds / total.inMilliseconds;
+    final shown = _current < allVerses.length ? _current + 1 : allVerses.length;
+    final status = '${t('verse')} $shown / ${allVerses.length}';
+    final timeLeft = '${t('timeLeft')}  ${formatTime(total - _elapsed)}';
 
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
+          if (_hasMusic)
+            IconButton(
+              tooltip: t('music'),
+              icon: Icon(settings.musicOn
+                  ? Icons.music_note_rounded
+                  : Icons.music_off_rounded),
+              onPressed: _toggleMusic,
+            ),
           IconButton(
             tooltip: t('smaller'),
             icon: const Icon(Icons.text_decrease_rounded),
@@ -1121,7 +1252,7 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
       ),
       body: Column(
         children: [
-          if (_audioMode) _audioOptions(scheme),
+          if (_listenMode) _listenOptions(),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -1173,12 +1304,14 @@ class _PathPlayerScreenState extends State<PathPlayerScreen> {
                                   style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600)),
-                              if (_audioMode && settings.repeatCount > 1)
-                                Text(
-                                    '${t('repeat')} $_round / ${settings.repeatCount}',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: scheme.onSurfaceVariant)),
+                              Text(
+                                _listenMode && settings.repeatCount > 1
+                                    ? '$timeLeft   •   ${t('repeat')} $_round/${settings.repeatCount}'
+                                    : timeLeft,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.onSurfaceVariant),
+                              ),
                             ],
                           ),
                         ),
@@ -1242,8 +1375,8 @@ class PujaScreen extends StatefulWidget {
 }
 
 class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
-  final AudioPlayer _bell = AudioPlayer();
-  final AudioPlayer _shankh = AudioPlayer();
+  final ap.AudioPlayer _bell = ap.AudioPlayer();
+  final ap.AudioPlayer _shankh = ap.AudioPlayer();
   final math.Random _random = math.Random();
 
   late final AnimationController _flowerCtrl = AnimationController(
@@ -1260,8 +1393,6 @@ class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _bell.setAsset('assets/sounds/bell.mp3').catchError((_) => null);
-    _shankh.setAsset('assets/sounds/shankh.mp3').catchError((_) => null);
     _aartiCtrl.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _aartiRounds--;
@@ -1288,16 +1419,16 @@ class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
   Future<void> _ringBell() async {
     HapticFeedback.lightImpact();
     try {
-      await _bell.seek(Duration.zero);
-      _bell.play();
+      await _bell.stop();
+      await _bell.play(ap.AssetSource('sounds/bell.mp3'));
     } catch (_) {}
   }
 
   Future<void> _blowShankh() async {
     HapticFeedback.mediumImpact();
     try {
-      await _shankh.seek(Duration.zero);
-      _shankh.play();
+      await _shankh.stop();
+      await _shankh.play(ap.AssetSource('sounds/shankh.mp3'));
     } catch (_) {}
   }
 
@@ -1421,10 +1552,16 @@ class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                Padding(
-                                  padding: EdgeInsets.all(size * 0.12),
-                                  child: Image.asset('assets/icon/icon_foreground.png'),
-                                ),
+                                if (MediaLibrary.images.isNotEmpty)
+                                  Padding(
+                                    padding: EdgeInsets.all(size * 0.05),
+                                    child: HanumanSlideshow(size: size * 0.9),
+                                  )
+                                else
+                                  Padding(
+                                    padding: EdgeInsets.all(size * 0.12),
+                                    child: Image.asset('assets/icon/icon_foreground.png'),
+                                  ),
                                 Positioned(
                                   bottom: size * 0.08,
                                   child: Text(
@@ -1515,6 +1652,25 @@ class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
                 },
               ),
             ),
+            if (MediaLibrary.images.length > 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  children: [
+                    Text(t('slideEvery')),
+                    for (final sec in const [5, 8, 15, 30])
+                      ChoiceChip(
+                        label: Text('$sec ${t('sec')}'),
+                        selected: settings.slideSeconds == sec,
+                        onSelected: (_) =>
+                            setState(() => settings.setSlideSeconds(sec)),
+                      ),
+                  ],
+                ),
+              ),
             Text(t('pujaHint'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant)),
@@ -1530,6 +1686,76 @@ class _PujaScreenState extends State<PujaScreen> with TickerProviderStateMixin {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Changing Hanuman ji pictures
+// ---------------------------------------------------------------------------
+
+class HanumanSlideshow extends StatefulWidget {
+  const HanumanSlideshow({super.key, required this.size});
+
+  final double size;
+
+  @override
+  State<HanumanSlideshow> createState() => _HanumanSlideshowState();
+}
+
+class _HanumanSlideshowState extends State<HanumanSlideshow> {
+  Timer? _timer;
+  int _index = 0;
+  int _seconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedule();
+  }
+
+  void _schedule() {
+    _timer?.cancel();
+    _seconds = settings.slideSeconds;
+    if (MediaLibrary.images.length < 2) return;
+    _timer = Timer.periodic(Duration(seconds: _seconds), (_) {
+      if (!mounted) return;
+      if (_seconds != settings.slideSeconds) {
+        _schedule();
+        return;
+      }
+      setState(() => _index = (_index + 1) % MediaLibrary.images.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_seconds != settings.slideSeconds) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _schedule());
+    }
+    final images = MediaLibrary.images;
+    if (images.isEmpty) return SizedBox(width: widget.size, height: widget.size);
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: ClipOval(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 900),
+          child: Image.asset(
+            images[_index % images.length],
+            key: ValueKey(_index),
+            width: widget.size,
+            height: widget.size,
+            fit: BoxFit.cover,
+          ),
         ),
       ),
     );
@@ -1587,6 +1813,16 @@ class CounterScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    segments: [
+                      ButtonSegment(value: false, label: Text(t('malaMode'))),
+                      ButtonSegment(value: true, label: Text(t('ramMode'))),
+                    ],
+                    selected: {settings.ramMode},
+                    onSelectionChanged: (s) => settings.setRamMode(s.first),
+                  ),
+                  const SizedBox(height: 12),
                   SegmentedButton<int>(
                     segments: const [
                       ButtonSegment(value: 11, label: Text('11')),
@@ -1598,7 +1834,7 @@ class CounterScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '${t('roundsDone')}: ${settings.malaRounds}',
+                    '${t('roundsDone')}: ${settings.malaRounds}   •   ${t('totalJap')}: ${settings.totalJap}',
                     style:
                         TextStyle(fontSize: 16, color: scheme.onSurfaceVariant),
                   ),
@@ -1643,6 +1879,16 @@ class CounterScreen extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
+                                    if (settings.ramMode)
+                                      Text(
+                                        'राम',
+                                        style: TextStyle(
+                                          fontSize: 30,
+                                          fontWeight: FontWeight.bold,
+                                          color: scheme.onPrimary
+                                              .withOpacity(0.9),
+                                        ),
+                                      ),
                                     Text(
                                       '${settings.counter}',
                                       style: TextStyle(
