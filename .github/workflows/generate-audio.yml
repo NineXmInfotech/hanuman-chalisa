@@ -1,0 +1,60 @@
+name: Generate built-in audio
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - tools/generate_audio.py
+      - .github/workflows/generate-audio.yml
+
+permissions:
+  contents: write
+
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg zip
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet "kokoro>=0.9" soundfile
+
+      - name: Generate audio
+        run: python tools/generate_audio.py
+
+      - name: Record model license
+        run: |
+          curl -sL https://huggingface.co/hexgrad/Kokoro-82M/raw/main/README.md -o audio_out/KOKORO_MODEL_CARD.md || true
+          head -n 20 audio_out/KOKORO_MODEL_CARD.md || true
+          pip show kokoro | grep -E "^(Name|Version|License)" > audio_out/KOKORO_PACKAGE.txt
+
+      - name: Package
+        run: |
+          cd audio_out
+          zip -q -r ../chalisa-audio.zip .
+          cd ..
+          ls -la audio_out chalisa-audio.zip
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: audio-${{ github.run_number }}
+          name: Generated audio ${{ github.run_number }}
+          prerelease: true
+          body: Hindi recitation generated with Kokoro (open-source TTS). Includes per-verse MP3s, previews and the model card.
+          files: |
+            chalisa-audio.zip
+            audio_out/preview_hm_omega.mp3
+            audio_out/preview_hf_alpha.mp3
+            audio_out/durations.json
+            audio_out/KOKORO_MODEL_CARD.md
