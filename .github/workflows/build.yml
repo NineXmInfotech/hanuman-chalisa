@@ -8,6 +8,7 @@ on:
       - .github/workflows/generate-audio.yml
       - .github/workflows/fetch-assets.yml
       - .github/workflows/fetch-reference.yml
+      - .github/workflows/find-media.yml
       - website/**
   workflow_dispatch:
 

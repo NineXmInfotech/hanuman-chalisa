@@ -1,0 +1,30 @@
+name: Find open media
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/find_media.py
+      - .github/workflows/find-media.yml
+
+permissions:
+  contents: write
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/find_media.py
+      - run: cd found && zip -q -r ../found-media.zip . && ls -la images audio
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: found-${{ github.run_number }}
+          name: Found media ${{ github.run_number }}
+          prerelease: true
+          files: |
+            found-media.zip
+            found/report.json
