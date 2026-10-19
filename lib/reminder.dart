@@ -85,6 +85,38 @@ class ReminderService {
     } catch (_) {}
   }
 
+  /// mode: 0 = off, 1 = one time, 2 = every day.
+  static Future<void> scheduleSimple({required int mode, required int hour, required int minute}) async {
+    if (!_ready) return;
+    try {
+      await _plugin.cancelAll();
+      if (mode == 0) return;
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'chalisa_reminder',
+          'Hanuman Chalisa reminder',
+          channelDescription: 'Reminder to recite the Hanuman Chalisa',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
+      final now = tz.TZDateTime.now(tz.local);
+      var when = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+      if (!when.isAfter(now)) when = when.add(const Duration(days: 1));
+      await _plugin.zonedSchedule(
+        100,
+        t('reminderTitle'),
+        t('reminderBody'),
+        when,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: mode == 2 ? DateTimeComponents.time : null,
+      );
+    } catch (_) {}
+  }
+
   static tz.TZDateTime _next(int weekday, int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
     var date = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);

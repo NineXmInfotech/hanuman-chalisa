@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'chalisa_data.dart';
+import 'home_v2.dart';
 import 'media.dart';
 import 'reminder.dart';
 import 'strings.dart';
@@ -125,6 +126,7 @@ class AppSettings extends ChangeNotifier {
         reminderOn = prefs?.getBool('reminderOn') ?? false,
         reminderHour = prefs?.getInt('reminderHour') ?? 7,
         reminderMinute = prefs?.getInt('reminderMinute') ?? 0,
+        alarmMode = prefs?.getInt('alarmMode') ?? 0,
         reminderDays = (prefs?.getStringList('reminderDays') ?? const ['2', '6'])
             .map((d) => int.tryParse(d) ?? 2)
             .toList();
@@ -156,6 +158,17 @@ class AppSettings extends ChangeNotifier {
   int reminderHour;
   int reminderMinute;
   List<int> reminderDays; // 1 = Monday … 7 = Sunday
+  int alarmMode; // 0 off, 1 one time, 2 daily
+
+  void setAlarm(int mode, int hour, int minute) {
+    alarmMode = mode;
+    reminderHour = hour;
+    reminderMinute = minute;
+    _prefs?.setInt('alarmMode', mode);
+    _prefs?.setInt('reminderHour', hour);
+    _prefs?.setInt('reminderMinute', minute);
+    notifyListeners();
+  }
 
   void setMusicOn(bool v) {
     musicOn = v;
@@ -315,7 +328,7 @@ class ChalisaApp extends StatelessWidget {
               brightness: Brightness.dark,
             ),
           ),
-          home: const HomeScreen(),
+          home: const MainScreen(),
         );
       },
     );
